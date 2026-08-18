@@ -20,6 +20,13 @@ const minPitch = -Math.PI / 6;
 // Rayon de collision du joueur (sphère rouge de rayon ~1)
 const PLAYER_RADIUS = 1.0;
 
+// Orientation du modèle 3D vers la direction de déplacement.
+// MODEL_FORWARD_OFFSET compense l'axe "avant" tel qu'exporté dans le
+// fichier .glb — si le personnage semble avancer à reculons, change-le
+// pour 0 (au lieu de Math.PI).
+const MODEL_FORWARD_OFFSET = Math.PI;
+const TURN_SPEED = 0.18; // 0..1 par frame — plus haut = tourne plus vite
+
 // État clavier
 const keys = {
   forward: false,
@@ -185,9 +192,21 @@ function updateThirdPersonControls(player, camera, getTerrainHeightAt, scene) {
   if (keys.left)     desiredMove.sub(right);
   if (keys.right)    desiredMove.add(right);
 
+  // État exposé pour l'animation du modèle (voir player.js).
+  const isMoving = desiredMove.lengthSq() > 0;
+  window.__playerMoving = isMoving;
+  window.__playerSprinting = !!keys.sprint;
+
   // Appliquer le déplacement (avec collisions)
-  if (desiredMove.lengthSq() > 0) {
+  if (isMoving) {
     desiredMove.normalize().multiplyScalar(currentSpeed);
+
+    // Oriente le modèle vers la direction de déplacement, par le chemin
+    // le plus court (évite un demi-tour brutal en passant par l'extérieur).
+    const targetAngle = Math.atan2(desiredMove.x, desiredMove.z) + MODEL_FORWARD_OFFSET;
+    let diff = ((targetAngle - player.rotation.y + Math.PI) % (Math.PI * 2)) - Math.PI;
+    if (diff < -Math.PI) diff += Math.PI * 2;
+    player.rotation.y += diff * TURN_SPEED;
 
     const nextPos = new THREE.Vector3(
       player.position.x + desiredMove.x,
@@ -228,6 +247,8 @@ function updateThirdPersonControls(player, camera, getTerrainHeightAt, scene) {
     velocityY -= gravity;
   }
   player.position.y += velocityY;
+
+  window.__playerJumping = isJumping;
 }
 
 // Expose pour script.js

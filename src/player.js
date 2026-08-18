@@ -140,13 +140,80 @@ function createPlayer(scene, getTerrainHeightAt) {
   }
 
   // ---------- Création mesh joueur ----------
-  const player = new THREE.Mesh(
-    new THREE.SphereGeometry(1, 16, 16),
+  // Le joueur est un Group : un mesh "espace réservé" (sphère) reste
+  // affiché le temps que le modèle 3D (robot.glb) charge en arrière-plan,
+  // puis est remplacé. ThirdPersonControls.js continue de traiter le
+  // joueur comme une sphère de rayon PLAYER_RADIUS pour la physique — on
+  // aligne les pieds du modèle chargé sur le bas de cette sphère pour
+  // n'avoir à toucher à aucune ligne de la physique existante.
+  const PLAYER_RADIUS = 1.0; // doit rester synchro avec ThirdPersonControls.js
+
+  const player = new THREE.Group();
+
+  const placeholder = new THREE.Mesh(
+    new THREE.SphereGeometry(PLAYER_RADIUS, 16, 16),
     new THREE.MeshStandardMaterial({ color: 0xff4444 })
   );
-  player.castShadow = true;
-  player.receiveShadow = true;
+  placeholder.castShadow = true;
+  placeholder.receiveShadow = true;
+  player.add(placeholder);
   scene.add(player);
+
+  // ---------- Modèle 3D (chargement asynchrone) + animations ----------
+  let mixer = null;
+  const animActions = {};
+  let currentAction = null;
+
+  function playAnimation(name, { fade = 0.25 } = {}) {
+    const next = animActions[name];
+    if (!next || next === currentAction) return;
+    if (currentAction) currentAction.fadeOut(fade);
+    next.reset().fadeIn(fade).play();
+    currentAction = next;
+  }
+
+  if (window.THREE && THREE.GLTFLoader) {
+    new THREE.GLTFLoader().load(
+      '/models/robot.glb',
+      (gltf) => {
+        const model = gltf.scene;
+
+        // Échelle calculée sur la vraie boîte englobante du modèle chargé
+        // (pas une valeur devinée) pour viser ~2 unités de haut.
+        const rawBox = new THREE.Box3().setFromObject(model);
+        const rawHeight = rawBox.getSize(new THREE.Vector3()).y;
+        const TARGET_HEIGHT = 2.0;
+        model.scale.setScalar(rawHeight > 0 ? TARGET_HEIGHT / rawHeight : 1);
+
+        // Recentre X/Z, pose les pieds au bas de la sphère de collision
+        // (même convention que l'ancien placeholder : centre = +PLAYER_RADIUS).
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        model.position.x -= center.x;
+        model.position.z -= center.z;
+        model.position.y -= box.min.y + PLAYER_RADIUS;
+
+        model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+
+        player.remove(placeholder);
+        placeholder.geometry.dispose();
+        placeholder.material.dispose();
+        player.add(model);
+
+        if (gltf.animations && gltf.animations.length) {
+          mixer = new THREE.AnimationMixer(model);
+          for (const clip of gltf.animations) {
+            // Les noms du pack sont préfixés "RobotArmature|Nom".
+            const short = clip.name.split('|').pop();
+            animActions[short] = mixer.clipAction(clip);
+          }
+          playAnimation('Idle', { fade: 0 });
+        }
+      },
+      undefined,
+      (err) => console.warn('[player] Échec du chargement de robot.glb, on garde la sphère.', err)
+    );
+  }
 
   const startY = getTerrainHeightAt(0, 0);
   player.position.set(0, startY + 1, 0);
@@ -318,9 +385,17 @@ function createPlayer(scene, getTerrainHeightAt) {
   };
 
   // ---------- Boucle d'update externe ----------
-  // Appelle ceci à chaque frame dans ta boucle principale :
-  player.update = function(){
+  // Appelle ceci à chaque frame dans ta boucle principale. `delta` (secondes)
+  // est optionnel — sans lui, les animations du modèle ne joueront pas.
+  player.update = function(delta){
     hpHUD.update(); // autoscale + face caméra (Sprite)
+
+    if (mixer && delta) {
+      mixer.update(delta);
+      if (animActions.Jump && (window.__playerJumping)) playAnimation('Jump');
+      else if (window.__playerMoving) playAnimation(window.__playerSprinting && animActions.Running ? 'Running' : 'Walking');
+      else playAnimation('Idle');
+    }
   };
 
   // ---------- Teardown ----------

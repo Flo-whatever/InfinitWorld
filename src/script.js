@@ -459,6 +459,7 @@ function animate(){
 
   // contrôles + collisions
   updateThirdPersonControls(player, camera, getTerrainHeightAt, scene);
+  player.update(delta);
   buildChunksAround(player.position.x, player.position.z);
 
   // Eau suit en XZ
