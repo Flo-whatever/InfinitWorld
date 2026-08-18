@@ -10,6 +10,7 @@
 // existent avant que les fichiers du jeu ci-dessous ne s'exécutent.
 import './lib/globals.js';
 import './lib/audio.js';
+import './lib/titleScreen.js';
 
 // Ordre de chargement identique à l'ancien index.html.
 // IMPORTANT: charger les biomes AVANT terrain/physics.

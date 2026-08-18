@@ -2,6 +2,13 @@
 
 console.log("Seamless Infinite World – boot (HUD + Biomes GUI + Pickups, Option A)");
 
+// ===== Écran d'accueil (Nouvelle partie / Reprendre / Options) =====
+// Top-level await : tout le reste du fichier (scène, chunks, joueur, boucle
+// de rendu) n'existe pas tant que l'utilisateur n'a pas choisi une option
+// dans le menu. `bootMode.mode` vaut 'new' (sauvegarde déjà effacée par
+// l'écran d'accueil) ou 'continue' (on charge la sauvegarde plus bas).
+const bootMode = window.showTitleScreen ? await window.showTitleScreen() : { mode: 'new' };
+
 // ===== Seed & Noise =====
 const rndSeed = Math.floor(Math.random() * 1_000_000);
 console.log("Seed :", rndSeed);
@@ -259,13 +266,15 @@ addEventListener('keydown', (e)=>{
 // ===== Player =====
 const player = createPlayer(scene, getTerrainHeightAt);
 
-// === SAVE: init + load ===
+// === SAVE: init + load (uniquement si "Reprendre" a été choisi) ===
 if (window.SAVE){
   SAVE.init({ getPlayerRef: () => player });
-  const loaded = SAVE.load({ applyPosition: true });
-  if (loaded) {
-    // Si la position a été restaurée, on reconstruit les chunks autour
-    resetAndRebuildChunks();
+  if (bootMode.mode === 'continue') {
+    const loaded = SAVE.load({ applyPosition: true });
+    if (loaded) {
+      // Si la position a été restaurée, on reconstruit les chunks autour
+      resetAndRebuildChunks();
+    }
   }
 }
 

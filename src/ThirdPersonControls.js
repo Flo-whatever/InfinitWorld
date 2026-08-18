@@ -37,24 +37,33 @@ const keys = {
   sprint: false // ⇦ maintenu quand 'C' est enfoncé (comme avant)
 };
 
+// Touches par défaut (repli si window.__keyBindings n'est pas encore chargé,
+// ex: titleScreen.js pas importé). Le rebinding lit/écrit window.__keyBindings
+// en direct à chaque événement, pas une copie figée au chargement — un
+// changement dans l'écran d'accueil prend donc effet immédiatement.
+const DEFAULT_KEY_BINDINGS = { forward: 'z', left: 'q', right: 'd', backward: 's', sprint: 'c', jump: ' ' };
+function currentBindings() { return window.__keyBindings || DEFAULT_KEY_BINDINGS; }
+
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
-  if (k === "z") keys.forward = true;
-  if (k === "q") keys.left = true;
-  if (k === "d") keys.right = true;
-  if (k === "s") keys.backward = true;
-  if (e.code === "Space") keys.jump = true;
-  if (k === "c") keys.sprint = true;
+  const b = currentBindings();
+  if (k === b.forward)  keys.forward = true;
+  if (k === b.left)     keys.left = true;
+  if (k === b.right)    keys.right = true;
+  if (k === b.backward) keys.backward = true;
+  if (k === b.jump)     keys.jump = true;
+  if (k === b.sprint)   keys.sprint = true;
 });
 
 window.addEventListener("keyup", (e) => {
   const k = e.key.toLowerCase();
-  if (k === "z") keys.forward = false;
-  if (k === "q") keys.left = false;
-  if (k === "d") keys.right = false;
-  if (k === "s") keys.backward = false;
-  if (e.code === "Space") keys.jump = false;
-  if (k === "c") keys.sprint = false;
+  const b = currentBindings();
+  if (k === b.forward)  keys.forward = false;
+  if (k === b.left)     keys.left = false;
+  if (k === b.right)    keys.right = false;
+  if (k === b.backward) keys.backward = false;
+  if (k === b.jump)     keys.jump = false;
+  if (k === b.sprint)   keys.sprint = false;
 });
 
 // === Initialisation Pointer Lock (à appeler depuis script.js) ===
