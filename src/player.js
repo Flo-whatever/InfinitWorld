@@ -203,8 +203,8 @@ function createPlayer(scene, getTerrainHeightAt) {
         if (gltf.animations && gltf.animations.length) {
           mixer = new THREE.AnimationMixer(model);
           for (const clip of gltf.animations) {
-            // Les noms du pack sont préfixés "RobotArmature|Nom".
-            const short = clip.name.split('|').pop();
+            // Les noms du pack sont de la forme "RobotArmature|Robot_Nom".
+            const short = clip.name.split('|').pop().replace(/^Robot_/, '');
             animActions[short] = mixer.clipAction(clip);
           }
           playAnimation('Idle', { fade: 0 });

@@ -24,7 +24,7 @@ const PLAYER_RADIUS = 1.0;
 // MODEL_FORWARD_OFFSET compense l'axe "avant" tel qu'exporté dans le
 // fichier .glb — si le personnage semble avancer à reculons, change-le
 // pour 0 (au lieu de Math.PI).
-const MODEL_FORWARD_OFFSET = Math.PI;
+const MODEL_FORWARD_OFFSET = 0;
 const TURN_SPEED = 0.18; // 0..1 par frame — plus haut = tourne plus vite
 
 // État clavier
