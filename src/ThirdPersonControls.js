@@ -32,8 +32,8 @@ const keys = {
 
 window.addEventListener("keydown", (e) => {
   const k = e.key.toLowerCase();
-  if (k === "w") keys.forward = true;
-  if (k === "a") keys.left = true;
+  if (k === "z") keys.forward = true;
+  if (k === "q") keys.left = true;
   if (k === "d") keys.right = true;
   if (k === "s") keys.backward = true;
   if (e.code === "Space") keys.jump = true;
@@ -42,8 +42,8 @@ window.addEventListener("keydown", (e) => {
 
 window.addEventListener("keyup", (e) => {
   const k = e.key.toLowerCase();
-  if (k === "w") keys.forward = false;
-  if (k === "a") keys.left = false;
+  if (k === "z") keys.forward = false;
+  if (k === "q") keys.left = false;
   if (k === "d") keys.right = false;
   if (k === "s") keys.backward = false;
   if (e.code === "Space") keys.jump = false;
