@@ -22,14 +22,46 @@ window.Combat = (function () {
   const RUN_SUCCESS_RATE            = 0.50;
   const COOLDOWN_MS                 = 45_000;
 
-  // Tables d'ennemis simplifiées
+  // Éléments : physical, fire, ice, nature. `weakness` prend +50% de dégâts,
+  // `resist` -40% — pour n'importe lequel des 4, y compris "physical".
+  const ELEMENTS = ['physical', 'fire', 'ice', 'nature'];
+
+  // Tables d'ennemis — plusieurs variantes par biome, avec faiblesse/résistance.
   const ENCOUNTER_TABLES = {
-    Forest:    [{ id:"goblin", name:"Gobelin", hp:20, atk:5, def:3, speed:1.1, xp:12 }],
-    Hills:     [{ id:"wolf",   name:"Loup",    hp:18, atk:4, def:2, speed:1.0, xp: 9 }],
-    Mountains: [{ id:"yeti",   name:"Yéti",    hp:28, atk:8, def:3, speed:0.7, xp:16 }],
-    Beach:     [{ id:"crab",   name:"Crabe",   hp:16, atk:4, def:2, speed:0.9, xp: 8 }],
-    default:   [{ id:"slime",  name:"Slime",   hp:12, atk:3, def:1, speed:0.6, xp: 5 }]
+    Forest: [
+      { id:"goblin", name:"Gobelin",         hp:20, atk:5, def:3, speed:1.1, xp:12, weakness:'fire',   resist:'nature'   },
+      { id:"boar",   name:"Sanglier",        hp:26, atk:6, def:5, speed:0.8, xp:13, weakness:'fire',   resist:'physical' },
+      { id:"treant", name:"Esprit des bois", hp:16, atk:7, def:1, speed:1.2, xp:14, weakness:'fire',   resist:'nature'   },
+    ],
+    Hills: [
+      { id:"wolf", name:"Loup",   hp:18, atk:4, def:2, speed:1.5, xp: 9, weakness:'ice',  resist:null       },
+      { id:"bear", name:"Ours",   hp:32, atk:7, def:4, speed:0.6, xp:15, weakness:'fire', resist:'physical' },
+      { id:"hawk", name:"Faucon", hp:12, atk:6, def:1, speed:2.0, xp:11, weakness:'ice',  resist:null       },
+    ],
+    Mountains: [
+      { id:"yeti",    name:"Yéti",           hp:28, atk:8, def:3, speed:0.7, xp:16, weakness:'fire',   resist:'ice'      },
+      { id:"golem",   name:"Golem de pierre",hp:40, atk:6, def:9, speed:0.4, xp:20, weakness:'nature', resist:'physical' },
+      { id:"griffon", name:"Griffon",        hp:22, atk:9, def:2, speed:1.8, xp:18, weakness:'ice',    resist:'fire'     },
+    ],
+    Beach: [
+      { id:"crab",     name:"Crabe",          hp:16, atk:4, def:6, speed:0.9, xp: 8, weakness:'nature', resist:'physical' },
+      { id:"gull",     name:"Mouette géante", hp:10, atk:5, def:1, speed:1.9, xp: 8, weakness:'ice',    resist:null       },
+      { id:"sandwyrm", name:"Ver des sables", hp:24, atk:7, def:4, speed:0.9, xp:15, weakness:'ice',    resist:'nature'   },
+    ],
+    default: [{ id:"slime", name:"Slime", hp:12, atk:3, def:1, speed:0.6, xp: 5, weakness:'fire', resist:'physical' }]
   };
+
+  // Compétences du joueur — 'attack' est toujours disponible (bouton dédié),
+  // les autres se débloquent par niveau et se choisissent via "Compétences".
+  const SKILLS = [
+    { id:'attack',       name:'Attaque',        mpCost:0, minLevel:1, kind:'damage', element:'physical', power:1.0, magic:false },
+    { id:'heavy_strike', name:'Frappe lourde',  mpCost:3, minLevel:1, kind:'damage', element:'physical', power:1.6, magic:false },
+    { id:'heal',         name:'Soin',           mpCost:4, minLevel:2, kind:'heal',   healPercent:0.3 },
+    { id:'fireball',     name:'Boule de feu',   mpCost:5, minLevel:3, kind:'damage', element:'fire',   power:1.3, magic:true },
+    { id:'ice_shard',    name:'Éclat de glace', mpCost:5, minLevel:5, kind:'damage', element:'ice',    power:1.3, magic:true },
+    { id:'nature_blade', name:'Lame de nature', mpCost:6, minLevel:7, kind:'damage', element:'nature', power:1.5, magic:true },
+  ];
+  const ATTACK_SKILL = SKILLS[0];
 
   // ======= TRANSITION =======
   const Transition = (() => {
@@ -111,10 +143,46 @@ window.Combat = (function () {
   const currentBiomeName = () => window.currentBiome || 'default';
   const pickEncounter = () => clone((ENCOUNTER_TABLES[currentBiomeName()] || ENCOUNTER_TABLES.default)[0]);
 
-  function computeDamage(atk, def){
-    const base = Math.max(1, atk - Math.floor(def/2));
-    const variance = 0.8 + Math.random() * 0.4;
-    return Math.max(1, Math.floor(base * variance));
+  // Chance d'esquive : ~5% de base, modulée par l'écart de vitesse
+  // attaquant/défenseur (jusqu'à ±25%), plafonnée pour rester raisonnable.
+  function rollEvasion(attackerSpeed, defenderSpeed){
+    const diff = (defenderSpeed||0) - (attackerSpeed||0);
+    const chance = Math.max(0.02, Math.min(0.35, 0.05 + diff * 0.06));
+    return Math.random() < chance;
+  }
+
+  // Résolution unifiée d'une action (dégâts ou soin), utilisée aussi bien
+  // pour le joueur (Attaque/compétences) que pour l'IA ennemie — garantit
+  // que l'esquive, les critiques et les éléments s'appliquent partout pareil.
+  //   attacker/defender: { atk, def, speed, hp, maxHp?, weakness?, resist? }
+  //   defBonus: bonus de défense temporaire du défenseur (ex: Défense = +2)
+  function resolveAttack({ attacker, defender, skill, defBonus = 0 }){
+    if (skill.kind === 'heal'){
+      const healAmt = Math.max(1, Math.floor((attacker.maxHp||attacker.hp) * skill.healPercent));
+      const before = attacker.hp;
+      attacker.hp = Math.min(attacker.maxHp||attacker.hp, attacker.hp + healAmt);
+      return { kind:'heal', heal: Math.floor(attacker.hp - before) };
+    }
+
+    if (rollEvasion(attacker.speed, defender.speed)){
+      return { kind:'evade' };
+    }
+
+    const effectiveDef = (defender.def||0) + defBonus;
+    const defReduction = skill.magic ? Math.floor(effectiveDef/4) : Math.floor(effectiveDef/2);
+    const base = Math.max(1, Math.floor(attacker.atk * skill.power) - defReduction);
+    const variance = 0.85 + Math.random() * 0.3;
+    let dmg = Math.max(1, Math.floor(base * variance));
+
+    let effectiveness = 'normal';
+    if (skill.element && defender.weakness === skill.element){ dmg = Math.floor(dmg * 1.5); effectiveness = 'weak'; }
+    else if (skill.element && defender.resist === skill.element){ dmg = Math.max(1, Math.floor(dmg * 0.6)); effectiveness = 'resist'; }
+
+    const crit = Math.random() < 0.08;
+    if (crit) dmg = Math.floor(dmg * 1.5);
+
+    defender.hp -= dmg;
+    return { kind:'damage', dmg, crit, effectiveness };
   }
   // ======= XP dynamique (type + niveau) =======
 // Utilise la valeur de base par type (enemy.xp) puis +15% par niveau au-dessus de 1.
@@ -237,6 +305,8 @@ window.Combat = (function () {
     const stats = playerRef.userData && playerRef.userData.stats;
     const hpNow = stats ? (stats.currentHP|0) : (playerRef.hp ?? 30);
     const hpMax = playerRef.getMaxHP ? playerRef.getMaxHP() : (playerRef.maxHp ?? 30);
+    const mpNow = stats ? (stats.currentMP|0) : 0;
+    const mpMax = playerRef.getMaxMP ? playerRef.getMaxMP() : 0;
     const atk   = playerRef.getAttack ? playerRef.getAttack() : (playerRef.atk ?? 7);
     const def   = playerRef.getDefense ? playerRef.getDefense() : (playerRef.def ?? 3);
     const spd   = playerRef.getAgility ? Math.max(0.5, playerRef.getAgility()/10) : (playerRef.speed ?? 1);
@@ -245,6 +315,8 @@ window.Combat = (function () {
       name: playerRef.name || "Héros",
       maxHp: hpMax,
       hp:    Math.min(hpMax, Math.max(1, hpNow)),
+      maxMp: mpMax,
+      mp:    Math.min(mpMax, Math.max(0, mpNow)),
       atk, def, speed: spd,
       mesh:  pMesh,
       xp:    stats ? (stats.xp|0) : (playerRef.xp||0),
@@ -282,6 +354,11 @@ window.Combat = (function () {
     enemy.hpMax   = baseHP      + Math.floor(finalLevel * 12);
     enemy.hp      = enemy.hpMax;
     enemy.regionInfo = reg;
+    // =====================================
+
+    // ===== Initiative : qui commence, selon la vitesse =====
+    const rollInitiative = (speed) => (speed||0) * (0.85 + Math.random()*0.3);
+    combat.turn = rollInitiative(combat.player.speed) >= rollInitiative(enemy.speed) ? 'player' : 'enemy';
     // =====================================
 
     // —— Intégration AnimatCombat ——
@@ -367,10 +444,18 @@ async function endEncounter(result){
 
         if (window.Inventory) {
           const lootTable = {
-            wolf:   [{ id:"wolf_pelt", qty:1, chance:0.8 }],
-            goblin: [{ id:"goblin_ear", qty:1, chance:0.7 }],
-            crab:   [{ id:"crab_shell", qty:1, chance:0.7 }],
-            yeti:   [{ id:"yeti_fur", qty:1, chance:0.5 }]
+            wolf:     [{ id:"wolf_pelt", qty:1, chance:0.8 }],
+            goblin:   [{ id:"goblin_ear", qty:1, chance:0.7 }],
+            crab:     [{ id:"crab_shell", qty:1, chance:0.7 }],
+            yeti:     [{ id:"yeti_fur", qty:1, chance:0.5 }],
+            boar:     [{ id:"boar_tusk", qty:1, chance:0.6 }],
+            treant:   [{ id:"treant_bark", qty:1, chance:0.6 }],
+            bear:     [{ id:"bear_claw", qty:1, chance:0.5 }],
+            hawk:     [{ id:"hawk_feather", qty:1, chance:0.7 }],
+            golem:    [{ id:"golem_shard", qty:1, chance:0.4 }],
+            griffon:  [{ id:"griffon_feather", qty:1, chance:0.4 }],
+            gull:     [{ id:"gull_feather", qty:1, chance:0.7 }],
+            sandwyrm: [{ id:"sandwyrm_scale", qty:1, chance:0.5 }],
           };
           const table = lootTable[combat.enemy.id] || [];
           table.forEach(l => { if (Math.random() < l.chance) Inventory.addItem(l.id, l.qty); });
@@ -378,6 +463,14 @@ async function endEncounter(result){
         }
       }
     }
+
+    // Synchronise les PM consommés/récupérés en combat, quel que soit le résultat.
+    if (stats && combat.player){
+      const maxMP = playerRef.getMaxMP ? playerRef.getMaxMP() : stats.base.maxMP;
+      stats.currentMP = Math.min(maxMP, Math.max(0, Math.floor(combat.player.mp)));
+      window.dispatchEvent(new CustomEvent('player:mpChanged',{detail:{mp:stats.currentMP,maxMP}}));
+    }
+
     if (playerRef.setInCombat) playerRef.setInCombat(false);
   }
 
@@ -408,6 +501,45 @@ async function endEncounter(result){
     });
   }
 
+  // Nombre de dégâts/soin flottant au-dessus d'un mesh de combat, en sprite
+  // texte (même technique que la barre de vie flottante de player.js).
+  function spawnDamageNumber(mesh, text, { color = '#ffffff' } = {}){
+    if (!mesh || !combat.scene || !window.THREE) return;
+    const THREE = window.THREE;
+    const canvas = document.createElement('canvas');
+    canvas.width = 160; canvas.height = 72;
+    const ctx2d = canvas.getContext('2d');
+    ctx2d.font = '700 44px system-ui, -apple-system, Segoe UI, Roboto, sans-serif';
+    ctx2d.textAlign = 'center'; ctx2d.textBaseline = 'middle';
+    ctx2d.lineWidth = 6; ctx2d.strokeStyle = 'rgba(0,0,0,.65)';
+    ctx2d.strokeText(text, 80, 36);
+    ctx2d.fillStyle = color;
+    ctx2d.fillText(text, 80, 36);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(1.8, 0.8, 1);
+    sprite.position.copy(mesh.position);
+    sprite.position.y += 1.8;
+    sprite.renderOrder = 999;
+    combat.scene.add(sprite);
+
+    const dur = 0.9;
+    let t = 0;
+    (function anim(){
+      t += 1/60;
+      const k = Math.min(1, t/dur);
+      sprite.position.y += 0.014;
+      mat.opacity = 1 - k;
+      if (k < 1 && combat.scene) requestAnimationFrame(anim);
+      else {
+        if (sprite.parent) sprite.parent.remove(sprite);
+        tex.dispose(); mat.dispose();
+      }
+    })();
+  }
+
   // ======= UI =======
   function makeButton(txt, onClick){
     const b = document.createElement('button');
@@ -428,29 +560,45 @@ async function endEncounter(result){
 
     const title = document.createElement('div');
     title.textContent = `Un ${combat.enemy.name} apparaît !`;
-    title.style.fontWeight='700'; title.style.marginBottom='8px'; title.style.textShadow='0 1px 2px #000';
+    title.style.fontWeight='700'; title.style.marginBottom='4px'; title.style.textShadow='0 1px 2px #000';
     ui.appendChild(title);
+
+    const turnIndicator = document.createElement('div');
+    turnIndicator.style.fontSize='12px'; turnIndicator.style.fontWeight='600';
+    turnIndicator.style.margin='0 0 8px'; turnIndicator.style.opacity='0.9';
+    ui.appendChild(turnIndicator);
+    function updateTurnIndicator(){
+      const mine = combat.turn === 'player';
+      turnIndicator.textContent = mine ? '▶ Tour : Vous' : `▶ Tour : ${combat.enemy?.name || 'Ennemi'}`;
+      turnIndicator.style.color = mine ? '#7ee787' : '#ff8f8f';
+    }
+    updateTurnIndicator();
 
     const bars = document.createElement('div');
     bars.style.display='flex'; bars.style.gap='16px'; bars.style.marginBottom='8px';
 
+    const pColumn = document.createElement('div'); pColumn.style.flex='1';
     const pBar = document.createElement('div');
-    const eBar = document.createElement('div');
+    const pMpBar = document.createElement('div'); pMpBar.style.marginTop='4px';
+    pColumn.appendChild(pBar); pColumn.appendChild(pMpBar);
 
-    function setBar(el, label, cur, max){
+    const eBar = document.createElement('div'); eBar.style.flex='1';
+
+    function setBar(el, label, cur, max, color='#2ecc71'){
       el.innerHTML=''; const l=document.createElement('div');
       l.textContent = `${label}: ${Math.max(0,Math.floor(cur))}/${max}`;
-      l.style.marginBottom='4px';
+      l.style.marginBottom='4px'; l.style.fontSize='13px';
       const bar=document.createElement('div'); bar.style.height='8px'; bar.style.background='#222'; bar.style.borderRadius='6px';
-      const fill=document.createElement('div'); fill.style.height='8px'; fill.style.width = `${Math.max(0, Math.min(1, cur/max))*100}%`;
-      fill.style.borderRadius='6px'; fill.style.background='#2ecc71';
+      const fill=document.createElement('div'); fill.style.height='8px'; fill.style.width = `${Math.max(0, Math.min(1, cur/Math.max(1,max)))*100}%`;
+      fill.style.borderRadius='6px'; fill.style.background=color;
       bar.appendChild(fill); el.appendChild(l); el.appendChild(bar);
     }
     function refreshBars(){
-      setBar(pBar, combat.player.name, combat.player.hp, combat.player.maxHp);
-      setBar(eBar, `${combat.enemy.name} (niv ${combat.enemy.level||1})`, combat.enemy.hp, combat.enemy.hpMax);
+      setBar(pBar, combat.player.name, combat.player.hp, combat.player.maxHp, '#2ecc71');
+      setBar(pMpBar, 'PM', combat.player.mp, combat.player.maxMp, '#3d8bfd');
+      setBar(eBar, `${combat.enemy.name} (niv ${combat.enemy.level||1})`, combat.enemy.hp, combat.enemy.hpMax, '#e6634b');
     }
-    refreshBars(); bars.appendChild(pBar); bars.appendChild(eBar); ui.appendChild(bars);
+    refreshBars(); bars.appendChild(pColumn); bars.appendChild(eBar); ui.appendChild(bars);
 
     // Conteneur des actions — position relative pour ancrer le menu
     const actions=document.createElement('div');
@@ -460,12 +608,27 @@ async function endEncounter(result){
     actions.style.position='relative';   // ancre pour le menu des objets
     ui.appendChild(actions);
 
-    // --- boutons dans l'ordre demandé : Attaquer, Défense, Objet, Fuir ---
-    const attackBtn = makeButton('Attaquer', async ()=>{
+    // Exécute une compétence du joueur : anim (si physique), résolution,
+    // effets (flash/nombre flottant/SFX), narration, puis passe la main.
+    async function usePlayerSkill(skill){
       if (combat.turn!=='player' || combat.over) return;
-      closeConsumableMenu();
+      if (skill.mpCost > 0 && combat.player.mp < skill.mpCost){
+        title.textContent = "Pas assez de PM.";
+        return;
+      }
+      closeConsumableMenu(); closeSkillMenu();
 
-      // Animation d'attaque (héros -> ennemi)
+      if (skill.kind === 'heal'){
+        if (skill.mpCost > 0) combat.player.mp -= skill.mpCost;
+        const res = resolveAttack({ attacker: combat.player, defender: combat.enemy, skill });
+        title.textContent = `${combat.player.name} lance ${skill.name} (+${res.heal} PV)`;
+        spawnDamageNumber(combat.player.mesh, `+${res.heal}`, { color:'#66ff99' });
+        window.SFX?.heal();
+        refreshBars();
+        combat.turn='enemy';
+        return;
+      }
+
       if (window.AnimatCombat){
         try{
           await AnimatCombat.lunge(combat.player.mesh, combat.enemy.mesh, { dist: 1.4, forward:0.18, back:0.14, arc:0.22 });
@@ -474,18 +637,108 @@ async function endEncounter(result){
         }catch(e){ console.warn('[Combat] Anim lunge/hitstop error', e); }
       }
 
-      const dmg = computeDamage(combat.player.atk, combat.enemy.def);
-      combat.enemy.hp -= dmg; title.textContent = `${combat.player.name} inflige ${dmg} à ${combat.enemy.name}`;
-      window.SFX?.hit();
+      if (skill.mpCost > 0) combat.player.mp -= skill.mpCost;
+      if (skill.element && skill.element !== 'physical') window.SFX?.spell(skill.element);
+
+      const res = resolveAttack({ attacker: combat.player, defender: combat.enemy, skill });
+      if (res.kind === 'evade'){
+        title.textContent = `${combat.enemy.name} esquive ${skill.name} !`;
+        spawnDamageNumber(combat.enemy.mesh, 'Esquive !', { color:'#cccccc' });
+        window.SFX?.evade();
+      } else {
+        const tag = res.effectiveness === 'weak' ? ' (faiblesse !)' : res.effectiveness === 'resist' ? ' (résisté)' : '';
+        title.textContent = `${combat.player.name} utilise ${skill.name} : ${res.dmg} dégâts${res.crit ? ' critique !' : ''}${tag}`;
+        spawnDamageNumber(combat.enemy.mesh, `-${res.dmg}`, { color: res.crit ? '#ff5555' : (res.effectiveness==='weak' ? '#ffdd55' : '#ffffff') });
+        if (window.AnimatCombat) AnimatCombat.flash(combat.enemy.mesh, { color: 0xff3333 });
+        window.SFX?.hit();
+      }
       refreshBars();
+
       if (combat.enemy.hp <= 0){ title.textContent = `${combat.enemy.name} est vaincu !`; window.SFX?.win(); endEncounter('win'); return; }
       combat.turn='enemy';
-    });
+    }
+
+    // --- boutons : Attaquer, Compétences, Défense, Objet, Fuir ---
+    const attackBtn = makeButton('Attaquer', ()=> usePlayerSkill(ATTACK_SKILL));
     actions.appendChild(attackBtn);
+
+    // === Compétences (menu ancré au bouton, même mécanique que "Objet") ===
+    let skillMenu = null;
+    let skillBtn = null;
+    function closeSkillMenu(){
+      if (skillMenu && skillMenu.parentNode){ skillMenu.parentNode.removeChild(skillMenu); skillMenu = null; }
+    }
+    function openSkillMenu(){
+      closeSkillMenu();
+      const available = SKILLS.filter(s => s.id !== 'attack' && s.minLevel <= (combat.player.lvl||1));
+      if (!available.length){
+        title.textContent = "Aucune compétence débloquée pour l'instant.";
+        return;
+      }
+      skillMenu = document.createElement('div');
+      skillMenu.style.position='absolute';
+      skillMenu.style.minWidth='240px';
+      skillMenu.style.maxWidth='60vw';
+      skillMenu.style.maxHeight='40vh';
+      skillMenu.style.overflow='auto';
+      skillMenu.style.padding='10px';
+      skillMenu.style.borderRadius='12px';
+      skillMenu.style.background='rgba(15,22,55,.95)';
+      skillMenu.style.border='1px solid rgba(90,120,220,.4)';
+      skillMenu.style.boxShadow='0 12px 28px rgba(0,0,0,.45)';
+      skillMenu.style.zIndex='10000';
+
+      const btnLeft = skillBtn.offsetLeft;
+      const btnWidth = skillBtn.offsetWidth;
+      const menuBottomOffset = actions.clientHeight + 8;
+      const menuWidthGuess = 260;
+      const left = Math.max(0, btnLeft + (btnWidth/2) - (menuWidthGuess/2));
+      skillMenu.style.left = `${left}px`;
+      skillMenu.style.bottom = `${menuBottomOffset}px`;
+
+      const head = document.createElement('div');
+      head.textContent = 'Choisir une compétence';
+      head.style.fontWeight='700'; head.style.margin='0 0 8px 2px';
+      skillMenu.appendChild(head);
+
+      for (const skill of available){
+        const usable = combat.player.mp >= skill.mpCost;
+        const row = document.createElement('button');
+        const elLabel = skill.element ? ` [${skill.element}]` : '';
+        row.textContent = `${skill.name}${elLabel} — ${skill.mpCost} PM`;
+        row.style.display='block'; row.style.width='100%'; row.style.textAlign='left';
+        row.style.margin='6px 0'; row.style.padding='8px 10px'; row.style.borderRadius='10px';
+        row.style.border='1px solid #33406d';
+        row.style.background = usable ? '#1a2350' : '#151a33';
+        row.style.color = usable ? '#e8e8ea' : '#6b7290';
+        row.style.cursor = usable ? 'pointer' : 'not-allowed';
+        if (usable){
+          row.onmouseenter = ()=> row.style.background='#202d6f';
+          row.onmouseleave = ()=> row.style.background='#1a2350';
+          row.onclick = ()=> usePlayerSkill(skill);
+        }
+        skillMenu.appendChild(row);
+      }
+
+      const cancel = document.createElement('button');
+      cancel.textContent = 'Annuler';
+      cancel.style.marginTop='8px'; cancel.style.padding='8px 10px'; cancel.style.borderRadius='10px';
+      cancel.style.border='1px solid #33406d'; cancel.style.background='#0f1637'; cancel.style.color='#e8e8ea';
+      cancel.onclick = ()=> closeSkillMenu();
+      skillMenu.appendChild(cancel);
+
+      actions.appendChild(skillMenu);
+    }
+    skillBtn = makeButton('Compétences', ()=>{
+      if (combat.turn!=='player' || combat.over) return;
+      closeConsumableMenu();
+      if (skillMenu) closeSkillMenu(); else openSkillMenu();
+    });
+    actions.appendChild(skillBtn);
 
     const guardBtn = makeButton('Défense', ()=>{
       if (combat.turn!=='player' || combat.over) return;
-      closeConsumableMenu();
+      closeConsumableMenu(); closeSkillMenu();
       combat.player._guard = true; title.textContent = `${combat.player.name} se met en garde.`; combat.turn='enemy';
     });
     actions.appendChild(guardBtn);
@@ -590,6 +843,7 @@ async function endEncounter(result){
 
     itemBtn = makeButton('Objet', ()=>{
       if (combat.turn!=='player' || combat.over) return;
+      closeSkillMenu();
       if (consumableMenu) closeConsumableMenu();
       else openConsumableMenu();
     });
@@ -597,7 +851,7 @@ async function endEncounter(result){
 
     const runBtn = makeButton('Fuir', ()=>{
       if (combat.turn!=='player' || combat.over) return;
-      closeConsumableMenu();
+      closeConsumableMenu(); closeSkillMenu();
       if (Math.random() < RUN_SUCCESS_RATE){ title.textContent = `${combat.player.name} s'échappe !`; endEncounter('run'); }
       else { title.textContent = `${combat.player.name} échoue à s'enfuir...`; combat.turn='enemy'; }
     });
@@ -608,12 +862,12 @@ async function endEncounter(result){
 
     combat._refreshBars = refreshBars;
     combat._setTitle = t => title.textContent = t;
+    combat._updateTurnIndicator = updateTurnIndicator;
 
     // —— Gestion ROBUSTE du clic extérieur ——
     const onDocClick = (ev)=>{
-      if (!consumableMenu) return;
-      const within = consumableMenu.contains(ev.target) || itemBtn.contains(ev.target);
-      if (!within) closeConsumableMenu();
+      if (consumableMenu && !(consumableMenu.contains(ev.target) || itemBtn.contains(ev.target))) closeConsumableMenu();
+      if (skillMenu && !(skillMenu.contains(ev.target) || skillBtn.contains(ev.target))) closeSkillMenu();
     };
     document.addEventListener('click', onDocClick);
     teardowns.push(()=> document.removeEventListener('click', onDocClick));
@@ -631,11 +885,20 @@ async function endEncounter(result){
       }catch(e){ console.warn('[Combat] Enemy anim error', e); }
     }
 
-    const dmg = computeDamage(combat.enemy.atk, combat.player._guard ? combat.player.def+2 : combat.player.def);
-    combat.player.hp -= dmg;
+    const defBonus = combat.player._guard ? 2 : 0;
+    const res = resolveAttack({ attacker: combat.enemy, defender: combat.player, skill: ATTACK_SKILL, defBonus });
     if (combat.player._guard) delete combat.player._guard;
 
-    combat._setTitle && combat._setTitle(`${combat.enemy.name} attaque et inflige ${dmg}.`);
+    if (res.kind === 'evade'){
+      combat._setTitle && combat._setTitle(`${combat.player.name} esquive l'attaque !`);
+      spawnDamageNumber(combat.player.mesh, 'Esquive !', { color:'#cccccc' });
+      window.SFX?.evade();
+    } else {
+      combat._setTitle && combat._setTitle(`${combat.enemy.name} attaque et inflige ${res.dmg}${res.crit ? ' (critique !)' : ''}.`);
+      spawnDamageNumber(combat.player.mesh, `-${res.dmg}`, { color: res.crit ? '#ff5555' : '#ffffff' });
+      if (window.AnimatCombat) AnimatCombat.flash(combat.player.mesh, { color: 0xff3333 });
+      window.SFX?.hurt();
+    }
     combat._refreshBars && combat._refreshBars();
 
     if (combat.player.hp <= 0){ combat._setTitle && combat._setTitle(`${combat.player.name} est K.O.`); window.SFX?.lose(); endEncounter('lose'); return; }
@@ -649,6 +912,7 @@ async function endEncounter(result){
     // Met à jour les animations de combat (hitstop/shake/lunge). Renvoie true si "gel" actif.
     if (window.AnimatCombat && AnimatCombat.update){ AnimatCombat.update(delta); }
 
+    combat._updateTurnIndicator && combat._updateTurnIndicator();
     renderer.render(combat.scene, combat.camera);
 
     if (combat.turn==='enemy' && !combat._enemyTimer){

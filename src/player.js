@@ -156,9 +156,10 @@ function createPlayer(scene, getTerrainHeightAt) {
   const stats = {
     level: 1,
     xp: 0,
-    base:  { str: 5, def: 3, agi: 3, maxHP: 30 },
-    bonus: { str: 0, def: 0, agi: 0, maxHP: 0 },
-    currentHP: 0
+    base:  { str: 5, def: 3, agi: 3, maxHP: 30, maxMP: 20 },
+    bonus: { str: 0, def: 0, agi: 0, maxHP: 0, maxMP: 0 },
+    currentHP: 0,
+    currentMP: 0
   };
 
   function xpForNext(level) { return Math.max(20, Math.floor(50 * Math.pow(level, 1.5))); }
@@ -166,6 +167,11 @@ function createPlayer(scene, getTerrainHeightAt) {
   player.getMaxHP = function () {
     const base = stats.base.maxHP + stats.bonus.maxHP;
     const scaling = (stats.level - 1) * 10;
+    return base + scaling;
+  };
+  player.getMaxMP = function () {
+    const base = stats.base.maxMP + stats.bonus.maxMP;
+    const scaling = (stats.level - 1) * 3;
     return base + scaling;
   };
   function getAttack()  { return stats.base.str + stats.bonus.str + Math.floor((stats.level - 1) * 0.5); }
@@ -177,6 +183,7 @@ function createPlayer(scene, getTerrainHeightAt) {
   player.getAgility = () => getAgility();
 
   stats.currentHP = player.getMaxHP();
+  stats.currentMP = player.getMaxMP();
   player.userData.stats = stats;
 
   // ---------- Mini HUD texte ----------
@@ -191,10 +198,12 @@ function createPlayer(scene, getTerrainHeightAt) {
 
   function refreshHUD() {
     const maxHP = player.getMaxHP();
+    const maxMP = player.getMaxMP();
     const need = xpForNext(stats.level);
     hud.textContent =
       `Niv: ${stats.level}  XP: ${stats.xp}/${need}\n` +
-      `PV:  ${Math.max(0, Math.floor(stats.currentHP))}/${maxHP}`;
+      `PV:  ${Math.max(0, Math.floor(stats.currentHP))}/${maxHP}\n` +
+      `PM:  ${Math.max(0, Math.floor(stats.currentMP))}/${maxMP}`;
   }
   refreshHUD();
 
@@ -215,6 +224,7 @@ function createPlayer(scene, getTerrainHeightAt) {
 
   // ---------- Régénération passive ----------
   const REGEN_AMOUNT = 1;
+  const MP_REGEN_AMOUNT = 1;
   const REGEN_INTERVAL_MS = 2000;
   let _regenEnabled = true;
   let _regenTimer = null;
@@ -222,13 +232,22 @@ function createPlayer(scene, getTerrainHeightAt) {
   function regenTick() {
     if (!_regenEnabled || _inCombat) return;
     const maxHP = player.getMaxHP();
-    if (stats.currentHP <= 0 || stats.currentHP >= maxHP) return;
-    const before = stats.currentHP;
-    stats.currentHP = Math.min(maxHP, before + REGEN_AMOUNT);
-    if (stats.currentHP !== before) {
-      window.dispatchEvent(new CustomEvent('player:hpChanged', { detail: { hp: stats.currentHP, maxHP } }));
-      refreshHUD();
+    if (stats.currentHP > 0 && stats.currentHP < maxHP) {
+      const before = stats.currentHP;
+      stats.currentHP = Math.min(maxHP, before + REGEN_AMOUNT);
+      if (stats.currentHP !== before) {
+        window.dispatchEvent(new CustomEvent('player:hpChanged', { detail: { hp: stats.currentHP, maxHP } }));
+      }
     }
+    const maxMP = player.getMaxMP();
+    if (stats.currentMP < maxMP) {
+      const beforeMP = stats.currentMP;
+      stats.currentMP = Math.min(maxMP, beforeMP + MP_REGEN_AMOUNT);
+      if (stats.currentMP !== beforeMP) {
+        window.dispatchEvent(new CustomEvent('player:mpChanged', { detail: { mp: stats.currentMP, maxMP } }));
+      }
+    }
+    refreshHUD();
   }
   function startRegenLoop() { if (!_regenTimer) _regenTimer = setInterval(regenTick, REGEN_INTERVAL_MS); }
   function stopRegenLoop() { if (_regenTimer) { clearInterval(_regenTimer); _regenTimer = null; } }
@@ -278,6 +297,23 @@ function createPlayer(scene, getTerrainHeightAt) {
     if (!Number.isFinite(amount) || amount <= 0) return;
     stats.currentHP = Math.min(player.getMaxHP(), stats.currentHP + Math.floor(amount));
     window.dispatchEvent(new CustomEvent('player:hpChanged', { detail: { hp: stats.currentHP, maxHP: player.getMaxHP() } }));
+    refreshHUD();
+  };
+
+  // Renvoie false (et ne change rien) si les PM sont insuffisants.
+  player.spendMP = function (amount) {
+    if (!Number.isFinite(amount) || amount <= 0) return true;
+    if (stats.currentMP < amount) return false;
+    stats.currentMP -= Math.floor(amount);
+    window.dispatchEvent(new CustomEvent('player:mpChanged', { detail: { mp: stats.currentMP, maxMP: player.getMaxMP() } }));
+    refreshHUD();
+    return true;
+  };
+
+  player.restoreMP = function (amount) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    stats.currentMP = Math.min(player.getMaxMP(), stats.currentMP + Math.floor(amount));
+    window.dispatchEvent(new CustomEvent('player:mpChanged', { detail: { mp: stats.currentMP, maxMP: player.getMaxMP() } }));
     refreshHUD();
   };
 

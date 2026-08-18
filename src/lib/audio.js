@@ -109,6 +109,22 @@
     lose() {
       playArpeggio([400, 340, 280, 220], { duration: 0.28, type: 'sawtooth', gain: 0.22, step: 0.15 });
     },
+    evade() {
+      playTone({ freq: 700, glideTo: 1100, duration: 0.12, type: 'sine', gain: 0.12 });
+    },
+    // Timbre différent par élément pour un sort lancé.
+    spell(element) {
+      if (element === 'fire') {
+        playNoise({ duration: 0.18, gain: 0.22, filterFreq: 3000 });
+        playTone({ freq: 140, glideTo: 40, duration: 0.22, type: 'sawtooth', gain: 0.2 });
+      } else if (element === 'ice') {
+        playArpeggio([1200, 1600], { duration: 0.16, type: 'sine', gain: 0.16, step: 0.05 });
+      } else if (element === 'nature') {
+        playArpeggio([440, 550], { duration: 0.2, type: 'triangle', gain: 0.18, step: 0.06 });
+      } else {
+        playTone({ freq: 300, glideTo: 200, duration: 0.14, type: 'square', gain: 0.2 });
+      }
+    },
   };
 
   // ───────────────────────── Musique générative ─────────────────────────

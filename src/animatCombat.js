@@ -178,6 +178,26 @@
     });
   };
 
+  // ─────────── FLASH (teinte brève du matériau à l'impact) ───────────
+  AC.flash = function(mesh, { color = 0xff3333, duration = 0.18 } = {}){
+    if (!mesh || !mesh.material) return;
+    const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
+    if (!mat || !mat.color) return;
+    const original = mat.color.clone();
+    const flashColor = new THREE.Color(color);
+    const fx = {
+      t: 0, dur: Math.max(0.05, duration),
+      update(dt){
+        this.t += dt;
+        const k = Math.min(1, this.t / this.dur);
+        mat.color.copy(flashColor).lerp(original, k);
+        if (k >= 1){ mat.color.copy(original); return false; }
+        return true;
+      }
+    };
+    _effects.push(fx);
+  };
+
   // expose
   window.AnimatCombat = AC;
 })();
