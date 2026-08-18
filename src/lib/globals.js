@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { Refractor } from 'three/examples/jsm/objects/Refractor.js';
-import { Water as Water2 } from 'three/examples/jsm/objects/Water2.js';
+import { Water } from 'three/examples/jsm/objects/Water2.js';
 import { GUI } from 'dat.gui';
 import './perlin-shim.js';
 import perlinNoise3d from 'perlin-noise-3d';
@@ -22,6 +22,6 @@ import perlinNoise3d from 'perlin-noise-3d';
 // construit donc un objet simple qui reprend tous les exports de THREE,
 // plus les addons, pour reproduire la forme de l'ancien global mutable
 // fourni par les <script> CDN.
-window.THREE = { ...THREE, OrbitControls, Reflector, Refractor, Water2 };
+window.THREE = { ...THREE, OrbitControls, Reflector, Refractor, Water };
 window.dat = { GUI };
 window.perlinNoise3d = perlinNoise3d;
