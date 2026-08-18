@@ -126,6 +126,41 @@ function createChest(){
   return chest;
 }
 
+// ── Bouche de grotte ─────────────────────────────────────────────────────────
+// Anneau de rochers autour du bord de l'entonnoir (donne l'impression d'un
+// surplomb qui encadre l'entrée), une lueur chaude qui remonte du fond, et un
+// coffre garanti tout en bas pour récompenser la descente.
+function spawnCaveEntrance(cave, group, obstacleBucket){
+  const cfg = (window.BIOME && BIOME.caveConfig) || { radius: 9, depth: 34 };
+  const rockCount = 7 + Math.floor(Math.random()*3);
+  for (let i=0;i<rockCount;i++){
+    const a = (i/rockCount) * Math.PI*2 + (Math.random()-0.5)*0.3;
+    const r = cfg.radius * (0.85 + Math.random()*0.35);
+    const px = cave.x + Math.cos(a)*r;
+    const pz = cave.z + Math.sin(a)*r;
+    const ph = window.worldHeightAt(px, pz);
+    const rock = createRock(1.1 + Math.random()*1.1);
+    rock.position.set(px, ph + 0.1, pz);
+    rock.rotation.y = Math.random()*Math.PI*2;
+    group.add(rock);
+    if (obstacleBucket) obstacleBucket.push(rock);
+  }
+
+  const floorY = window.worldHeightAt(cave.x, cave.z);
+
+  // Lueur chaude qui remonte du fond — lisible de loin, fidèle au lore
+  // (essence de rêve condensée par les Tisserands, voir catalog.js).
+  const glow = new THREE.PointLight(0xffaa55, 1.4, 45, 2);
+  glow.position.set(cave.x, floorY + 5, cave.z);
+  group.add(glow);
+
+  const chest = createChest();
+  chest.position.set(cave.x, floorY + 0.01, cave.z);
+  chest.rotation.y = Math.random()*Math.PI*2;
+  group.add(chest);
+  if (typeof window.__registerPickup === 'function') window.__registerPickup(chest);
+}
+
 // ───────────────────────────────────────────────────────────────────────────────
 // Réglages spawn (probabilités par CHUNK + quotas)
 const SPAWN = {
@@ -172,6 +207,14 @@ function addDeterministicObjectsForChunk(cx, cz, group, size, segs){
   window.__obstaclesByChunk = window.__obstaclesByChunk || new Map();
   const obstacleBucket = [];
   window.__obstaclesByChunk.set(`${cx},${cz}`, obstacleBucket);
+
+  // Bouches de grottes dont le centre tombe dans ce chunk (voir biome.fixed.js
+  // — la dépression elle-même est déjà dans le terrain via worldHeightAt,
+  // ici on ne fait que la décorer et y déposer un butin garanti).
+  if (window.BIOME && BIOME.caveCentersInBounds){
+    const caves = BIOME.caveCentersInBounds(startX, startX+size, startZ, startZ+size);
+    for (const cave of caves) spawnCaveEntrance(cave, group, obstacleBucket);
+  }
 
   // Tirages « par chunk » pour autoriser (ou non) le spawn de pickups
   const herbRoll  = hash2d(cx*928371 + cz*123457,  7, seed);
