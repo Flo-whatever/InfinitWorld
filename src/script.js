@@ -85,6 +85,11 @@ dirLight.shadow.camera.left   = -SHADOW_HALF;
 dirLight.shadow.camera.right  =  SHADOW_HALF;
 dirLight.shadow.camera.top    =  SHADOW_HALF;
 dirLight.shadow.camera.bottom = -SHADOW_HALF;
+// Indispensable après avoir modifié le frustum à la main : sans cet appel,
+// la caméra d'ombre garde sa matrice de projection par défaut de Three.js
+// (±5 unités seulement), beaucoup trop petite pour couvrir le joueur ou les
+// arbres — aucune ombre ne peut alors apparaître.
+dirLight.shadow.camera.updateProjectionMatrix();
 dirLight.shadow.bias = -0.0005;
 skyRig.add(dirLight.target);
 dirLight.target.position.set(0, 0, 0);
