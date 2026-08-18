@@ -14,6 +14,7 @@
 //
 // NOTE : on expose le joueur globalement via window.__PLAYER__ (utilisé par ton menu).
 
+window.createPlayer = createPlayer;
 function createPlayer(scene, getTerrainHeightAt) {
   // ---------- Helpers HUD flottant ----------
   function makeHpCanvas(width=96, height=14){
