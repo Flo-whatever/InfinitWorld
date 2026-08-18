@@ -179,7 +179,16 @@ function updateThirdPersonControls(player, camera, getTerrainHeightAt, scene) {
   const terrainY = getTerrainHeightAt(player.position.x, player.position.z);
   const groundY = terrainY + PLAYER_RADIUS; // le joueur "pose" sur la surface
 
-  if (player.position.y <= groundY) {
+  // Tolérance de "marche" : tant que le joueur n'est pas plus haut que le
+  // sol + STEP_TOLERANCE, on le considère toujours au sol — y compris en
+  // descendant une pente. Sans cette tolérance, la moindre pente négative
+  // entre deux frames (donc quasiment n'importe où sur un terrain généré
+  // par bruit de Perlin, même "plat") faisait basculer le joueur en chute
+  // libre pendant une frame, avant qu'il ne se recolle au sol la frame
+  // suivante — d'où l'impression de sautiller en permanence en marchant.
+  const STEP_TOLERANCE = 0.5;
+
+  if (player.position.y <= groundY + STEP_TOLERANCE) {
     player.position.y = groundY;
     velocityY = 0;
     isJumping = false;
