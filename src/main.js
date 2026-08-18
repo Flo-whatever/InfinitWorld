@@ -11,6 +11,7 @@ import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import { Refractor } from 'three/examples/jsm/objects/Refractor.js';
 import { Water as Water2 } from 'three/examples/jsm/objects/Water2.js';
 import { GUI } from 'dat.gui';
+import './lib/perlin-shim.js';
 import perlinNoise3d from 'perlin-noise-3d';
 
 // `import * as THREE from 'three'` renvoie un objet de namespace figé (non
