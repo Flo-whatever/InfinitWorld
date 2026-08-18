@@ -178,20 +178,31 @@
     });
   };
 
-  // ─────────── FLASH (teinte brève du matériau à l'impact) ───────────
+  // ─────────── FLASH (teinte brève du/des matériau(x) à l'impact) ───────────
+  // Fonctionne aussi bien sur un simple Mesh (sphère/cylindre placeholder)
+  // que sur un modèle chargé (Group avec plusieurs sous-meshes/matériaux) —
+  // on parcourt la hiérarchie et on collecte tous les matériaux colorables.
   AC.flash = function(mesh, { color = 0xff3333, duration = 0.18 } = {}){
-    if (!mesh || !mesh.material) return;
-    const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material;
-    if (!mat || !mat.color) return;
-    const original = mat.color.clone();
+    if (!mesh) return;
+    // .traverse() existe sur tout Object3D et visite l'objet lui-même en
+    // premier, donc ça marche identiquement pour un simple Mesh ou un Group.
+    const mats = new Set();
+    mesh.traverse(o => {
+      if (!o.isMesh || !o.material) return;
+      (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { if (m && m.color) mats.add(m); });
+    });
+    if (mats.size === 0) return;
+
+    const originals = new Map();
+    mats.forEach(m => originals.set(m, m.color.clone()));
     const flashColor = new THREE.Color(color);
     const fx = {
       t: 0, dur: Math.max(0.05, duration),
       update(dt){
         this.t += dt;
         const k = Math.min(1, this.t / this.dur);
-        mat.color.copy(flashColor).lerp(original, k);
-        if (k >= 1){ mat.color.copy(original); return false; }
+        mats.forEach(m => m.color.copy(flashColor).lerp(originals.get(m), k));
+        if (k >= 1){ mats.forEach(m => m.color.copy(originals.get(m))); return false; }
         return true;
       }
     };

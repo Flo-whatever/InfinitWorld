@@ -296,8 +296,11 @@ window.Combat = (function () {
     const plane = new THREE.Mesh(new THREE.PlaneGeometry(20,20), new THREE.MeshStandardMaterial({ color:0x334433 }));
     plane.rotation.x = -Math.PI/2; combat.scene.add(plane);
 
-    const pMesh = new THREE.Mesh(new THREE.SphereGeometry(1,16,16), new THREE.MeshStandardMaterial({ color:0xff4444 }));
-    pMesh.position.set(-3,1,0); combat.scene.add(pMesh);
+    // Espace réservé (sphère) affiché le temps que le modèle du héros charge —
+    // remplacé par le vrai robot une fois prêt (voir plus bas).
+    const pPlaceholder = new THREE.Mesh(new THREE.SphereGeometry(1,16,16), new THREE.MeshStandardMaterial({ color:0xff4444 }));
+    pPlaceholder.position.set(-3,1,0); combat.scene.add(pPlaceholder);
+    let pMesh = pPlaceholder;
 
     const eMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.7,0.7,1.6,16), new THREE.MeshStandardMaterial({ color:0xff6666 }));
     eMesh.position.set(3,0.8,0); combat.scene.add(eMesh);
@@ -319,9 +322,57 @@ window.Combat = (function () {
       mp:    Math.min(mpMax, Math.max(0, mpNow)),
       atk, def, speed: spd,
       mesh:  pMesh,
+      mixer: null,
       xp:    stats ? (stats.xp|0) : (playerRef.xp||0),
       lvl:   stats ? (stats.level|0) : (playerRef.lvl||1)
     };
+
+    // Remplace la sphère par le même modèle 3D que dans le monde, chargé de
+    // façon asynchrone — on vérifie au retour que ce combat est toujours
+    // celui en cours (le joueur a pu fuir/gagner/perdre avant la fin du
+    // chargement, auquel cas on ignore le résultat).
+    if (window.THREE && THREE.GLTFLoader) {
+      const loadingScene = combat.scene;
+      new THREE.GLTFLoader().load(
+        '/models/robot.glb',
+        (gltf) => {
+          if (combat.scene !== loadingScene) return; // combat déjà terminé entre-temps
+          const model = gltf.scene;
+
+          const rawBox = new THREE.Box3().setFromObject(model);
+          const rawHeight = rawBox.getSize(new THREE.Vector3()).y;
+          const TARGET_HEIGHT = 1.8;
+          model.scale.setScalar(rawHeight > 0 ? TARGET_HEIGHT / rawHeight : 1);
+
+          const box = new THREE.Box3().setFromObject(model);
+          const center = box.getCenter(new THREE.Vector3());
+          model.position.x = pPlaceholder.position.x - center.x;
+          model.position.z = pPlaceholder.position.z - center.z;
+          model.position.y = -box.min.y; // pieds au sol (y=0)
+          // Fait face à l'ennemi.
+          model.rotation.y = Math.atan2(eMesh.position.x - model.position.x, eMesh.position.z - model.position.z);
+
+          model.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+
+          loadingScene.remove(pPlaceholder);
+          pPlaceholder.geometry.dispose();
+          pPlaceholder.material.dispose();
+          loadingScene.add(model);
+
+          pMesh = model;
+          combat.player.mesh = model;
+
+          if (gltf.animations && gltf.animations.length) {
+            const mixer = new THREE.AnimationMixer(model);
+            const idleClip = gltf.animations.find(a => a.name.endsWith('Idle'));
+            if (idleClip) mixer.clipAction(idleClip).play();
+            combat.player.mixer = mixer;
+          }
+        },
+        undefined,
+        (err) => console.warn('[Combat] Échec du chargement de robot.glb, on garde la sphère.', err)
+      );
+    }
 
     const enemy = clone(enemyTemplate);
     enemy.hpMax = enemy.hp;
@@ -911,6 +962,7 @@ async function endEncounter(result){
 
     // Met à jour les animations de combat (hitstop/shake/lunge). Renvoie true si "gel" actif.
     if (window.AnimatCombat && AnimatCombat.update){ AnimatCombat.update(delta); }
+    if (combat.player && combat.player.mixer) combat.player.mixer.update(delta);
 
     combat._updateTurnIndicator && combat._updateTurnIndicator();
     renderer.render(combat.scene, combat.camera);
