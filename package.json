@@ -1,0 +1,21 @@
+{
+  "name": "infinitworld",
+  "version": "1.0.0",
+  "description": "Seamless infinite world (Three.js, chunks + biomes)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "license": "ISC",
+  "dependencies": {
+    "dat.gui": "0.7.9",
+    "perlin-noise-3d": "^0.5.4",
+    "three": "0.132.2"
+  },
+  "devDependencies": {
+    "vite": "^5.4.21"
+  }
+}

@@ -9,34 +9,7 @@
   </style>
 </head>
 <body>
-  <script src="https://cdn.jsdelivr.net/npm/dat.gui@0.7.9/build/dat.gui.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://unpkg.com/perlin-noise-3d"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/objects/Reflector.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/objects/Refractor.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/objects/Water2.js"></script>
-  
-  <!-- IMPORTANT: charger les biomes AVANT terrain/physics -->
-  <script src="./biome.fixed.js"></script>
-
-  <!-- Modules (ordre important) -->
-  <script src="./terrain.js"></script>
-  <script src="./physics.js"></script>
-  <script src="./player.js"></script>
-  <script src="./ThirdPersonControls.js"></script>
-  <script src="./objects.js"></script>
-    <!-- === AJOUT combat === -->
-  <script src="./EncounterHelpers.js"></script>
-  <script src="./ZoneDifficulty.js"></script>
-  <script src="./CombatSystem.js"></script>
-  <script src="./animatCombat.js"></script>
-  <script src="./inventory.js"></script>
-  <script src="./game_menu.js"></script>
-  <script src="./catalog.js"></script>
-  <script src="./SaveSystem.js"></script>
-  <script src="./script.js"></script>
-
+  <script type="module" src="/src/main.js"></script>
 
 </body>
 </html>
