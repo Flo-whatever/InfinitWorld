@@ -88,34 +88,61 @@ function initThirdPersonControls(domElement){
 
 // === Résolution de collisions joueur ↔ obstacles statiques ===
 const _tmpWorldPos = new THREE.Vector3();
-function resolveObjectCollisions(nextPos, scene){
+
+// Récupère les racines d'obstacles (arbres/rochers) des chunks à proximité
+// immédiate du joueur, via le registre par chunk tenu par objects.js —
+// évite de parcourir toute la scène (tous les chunks chargés, l'eau, le
+// ciel...) à chaque frame pour ne retenir au final qu'une poignée d'objets.
+function nearbyObstacleRoots(x, z){
+  const chunkSize = window.terrainParams && window.terrainParams.chunkSize;
+  const registry = window.__obstaclesByChunk;
+  if (!chunkSize || !registry) return [];
+
+  const cx = Math.floor(x / chunkSize);
+  const cz = Math.floor(z / chunkSize);
+  const roots = [];
+  for (let dz = -1; dz <= 1; dz++){
+    for (let dx = -1; dx <= 1; dx++){
+      const bucket = registry.get(`${cx+dx},${cz+dz}`);
+      if (bucket) roots.push(...bucket);
+    }
+  }
+  return roots;
+}
+
+function resolveObjectCollisions(nextPos){
+  const roots = nearbyObstacleRoots(nextPos.x, nextPos.z);
+  if (roots.length === 0) return;
+
   // Parcours léger : on regarde uniquement les objets tagués "isObstacle"
   // On fait 2 passes max pour améliorer la séparation en cas de contacts multiples.
   for (let pass = 0; pass < 2; pass++){
-    scene.traverse((o)=>{
-      if (!o.isMesh || !o.userData || !o.userData.isObstacle) return;
+    for (const root of roots){
+      root.traverse((o)=>{
+        if (!o.isMesh || !o.userData || !o.userData.isObstacle) return;
 
-      // Position monde de l’obstacle (les chunks n’ont pas de transform, mais on reste safe)
-      o.getWorldPosition(_tmpWorldPos);
-      const ox = _tmpWorldPos.x;
-      const oz = _tmpWorldPos.z;
-      const orad = o.userData.colliderRadius || 0.6;
+        // Position monde de l’obstacle (les chunks n’ont pas de transform, mais on reste safe)
+        o.getWorldPosition(_tmpWorldPos);
+        const ox = _tmpWorldPos.x;
+        const oz = _tmpWorldPos.z;
+        const orad = o.userData.colliderRadius || 0.6;
 
-      const dx = nextPos.x - ox;
-      const dz = nextPos.z - oz;
-      const distSq = dx*dx + dz*dz;
-      const minDist = PLAYER_RADIUS + orad;
+        const dx = nextPos.x - ox;
+        const dz = nextPos.z - oz;
+        const distSq = dx*dx + dz*dz;
+        const minDist = PLAYER_RADIUS + orad;
 
-      if (distSq > 0 && distSq < (minDist*minDist)){
-        const dist = Math.sqrt(distSq);
-        // Vector de poussée (2D XZ)
-        const nx = dx / dist;
-        const nz = dz / dist;
-        const push = (minDist - dist) + 1e-3; // petit epsilon pour éviter la recapture
-        nextPos.x += nx * push;
-        nextPos.z += nz * push;
-      }
-    });
+        if (distSq > 0 && distSq < (minDist*minDist)){
+          const dist = Math.sqrt(distSq);
+          // Vector de poussée (2D XZ)
+          const nx = dx / dist;
+          const nz = dz / dist;
+          const push = (minDist - dist) + 1e-3; // petit epsilon pour éviter la recapture
+          nextPos.x += nx * push;
+          nextPos.z += nz * push;
+        }
+      });
+    }
   }
 }
 
@@ -169,7 +196,7 @@ function updateThirdPersonControls(player, camera, getTerrainHeightAt, scene) {
     );
 
     // Collisions objets (si la scène est fournie)
-    if (scene) resolveObjectCollisions(nextPos, scene);
+    if (scene) resolveObjectCollisions(nextPos);
 
     player.position.x = nextPos.x;
     player.position.z = nextPos.z;

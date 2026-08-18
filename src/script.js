@@ -341,6 +341,7 @@ function resetAndRebuildChunks(){
     });
   }
   chunks.clear();
+  window.__obstaclesByChunk?.clear();
   buildChunksAround(player.position.x, player.position.z, true);
 }
 
@@ -375,6 +376,7 @@ function buildChunksAround(wx, wz){
         if (o.material && o.material.dispose) o.material.dispose();
       });
       chunks.delete(k);
+      window.__obstaclesByChunk?.delete(k);
     }
   }
 }

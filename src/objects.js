@@ -166,6 +166,13 @@ function addDeterministicObjectsForChunk(cx, cz, group, size, segs){
   const startX = cx*size - size/2;
   const startZ = cz*size - size/2;
 
+  // Registre des obstacles par chunk (voir ThirdPersonControls.js) : évite de
+  // parcourir toute la scène à chaque frame pour tester les collisions —
+  // on ne teste que les obstacles des chunks proches du joueur.
+  window.__obstaclesByChunk = window.__obstaclesByChunk || new Map();
+  const obstacleBucket = [];
+  window.__obstaclesByChunk.set(`${cx},${cz}`, obstacleBucket);
+
   // Tirages « par chunk » pour autoriser (ou non) le spawn de pickups
   const herbRoll  = hash2d(cx*928371 + cz*123457,  7, seed);
   const chestRoll = hash2d(cx*192837 + cz*765431, 11, seed);
@@ -203,6 +210,7 @@ function addDeterministicObjectsForChunk(cx, cz, group, size, segs){
         t.scale.setScalar(s);
         t.position.set(px, ph, pz);
         group.add(t);
+        obstacleBucket.push(t);
       }
 
       // ── Rochers (pentes/hauteurs, surtout Mountains)
@@ -216,6 +224,7 @@ function addDeterministicObjectsForChunk(cx, cz, group, size, segs){
         const rock = createRock(s);
         rock.position.set(px, ph+0.05, pz);
         group.add(rock);
+        obstacleBucket.push(rock);
       }
 
       // ── PICKUPS : Herbes médicinales (RARES, 0–1/chunk)
