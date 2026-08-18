@@ -476,8 +476,9 @@ async function endEncounter(result){
 
       const dmg = computeDamage(combat.player.atk, combat.enemy.def);
       combat.enemy.hp -= dmg; title.textContent = `${combat.player.name} inflige ${dmg} à ${combat.enemy.name}`;
+      window.SFX?.hit();
       refreshBars();
-      if (combat.enemy.hp <= 0){ title.textContent = `${combat.enemy.name} est vaincu !`; endEncounter('win'); return; }
+      if (combat.enemy.hp <= 0){ title.textContent = `${combat.enemy.name} est vaincu !`; window.SFX?.win(); endEncounter('win'); return; }
       combat.turn='enemy';
     });
     actions.appendChild(attackBtn);
@@ -637,7 +638,7 @@ async function endEncounter(result){
     combat._setTitle && combat._setTitle(`${combat.enemy.name} attaque et inflige ${dmg}.`);
     combat._refreshBars && combat._refreshBars();
 
-    if (combat.player.hp <= 0){ combat._setTitle && combat._setTitle(`${combat.player.name} est K.O.`); endEncounter('lose'); return; }
+    if (combat.player.hp <= 0){ combat._setTitle && combat._setTitle(`${combat.player.name} est K.O.`); window.SFX?.lose(); endEncounter('lose'); return; }
     combat.turn='player';
   }
 

@@ -244,6 +244,7 @@ addEventListener('keydown', (e)=>{
     if (window.Inventory){
       Inventory.addItem(info.id, info.qty||1);
       showToast(`+${info.qty||1} ${info.label || info.id}`);
+      window.SFX?.pickup();
     }
     // retire du monde & de la liste
     const parent = nearestPickup.parent;
@@ -412,6 +413,7 @@ if (window.Combat){
     buildWorld:  () => { buildChunksAround(player.position.x, player.position.z, true); },
     destroyWorld: () => { destroyWorld(); },
     getPlayerRef: () => player,
+    onMusicSwap: (state) => window.Music?.setState(state),
   });
 } else {
   console.warn("CombatSystem non chargé : vérifie l'ordre des <script>…");

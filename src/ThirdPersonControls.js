@@ -222,6 +222,7 @@ function updateThirdPersonControls(player, camera, getTerrainHeightAt, scene) {
     if (keys.jump) {
       velocityY = jumpStrength;
       isJumping = true;
+      window.SFX?.jump();
     }
   } else {
     velocityY -= gravity;
