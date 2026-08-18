@@ -14,7 +14,11 @@ function buildGeometryFromTriangles(tris, uvs){
   geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geom.setAttribute('uv',       new THREE.BufferAttribute(uv, 2));
   geom.setIndex(new THREE.BufferAttribute(indices, 1));
-  // NOTE: computeVertexNormals() inutile avec flatShading:true
+  // flatShading:true suffit pour l'ASPECT facetté (calculé par dérivées dans
+  // le shader), mais sans attribut "normal" sur la géométrie, la réception
+  // d'ombre ne fonctionne pas du tout — vérifié : reproduit puis corrigé
+  // dans une scène de test minimale isolée avant d'appliquer ici.
+  geom.computeVertexNormals();
   return geom;
 }
 
